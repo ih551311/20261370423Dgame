@@ -20,6 +20,11 @@ namespace Platformer3D
         [Header("Fall Detection")]
         [SerializeField] private float fallDeathY = -10f;
 
+        [Header("Starting Position")]
+        [SerializeField] private bool autoSnapToGroundAtStart = true;
+        [SerializeField] private float extraHeightOffset = 0f;     // ← 여기서 미세 조정 (음수로 하면 내려감)
+        [SerializeField] private float visualYOffset = 0f;        // ← Visual Mesh 추가 오프셋
+
         private CharacterController controller;
         private Vector3 velocity;
         private bool jumpRequested;
@@ -64,18 +69,41 @@ namespace Platformer3D
                 cameraTransform = Camera.main.transform;
             }
 
+            if (autoSnapToGroundAtStart)
+            {
+                SnapFeetToGround();
+            }
+
             if (GameManager.Instance != null)
             {
                 HandleGameStateChanged(GameManager.Instance.CurrentState);
             }
         }
 
+        private void SnapFeetToGround()
+        {
+            if (controller == null) return;
+
+            Vector3 origin = transform.position + Vector3.up * 10f;
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 20f, groundMask, QueryTriggerInteraction.Ignore))
+            {
+                // 발 위치 계산 (CharacterController 기준)
+                float bottomOffset = controller.center.y - (controller.height * 0.5f);
+                Vector3 newPos = transform.position;
+                newPos.y = hit.point.y - bottomOffset + extraHeightOffset;
+                transform.position = newPos;
+
+                Debug.Log($"✅ Snap 완료 | Player Y = {newPos.y:F3} | Ground Y = {hit.point.y:F3}");
+            }
+            else
+            {
+                Debug.LogWarning("지면 Raycast 실패! autoSnapToGroundAtStart OFF로 하고 직접 위치 맞춰보세요.");
+            }
+        }
+
         private void Update()
         {
-            if (!CanControl())
-            {
-                return;
-            }
+            if (!CanControl()) return;
 
             if (ReadJumpPressed())
             {
@@ -87,21 +115,13 @@ namespace Platformer3D
 
         private void FixedUpdate()
         {
-            if (!CanControl())
-            {
-                return;
-            }
-
+            if (!CanControl()) return;
             HandleMovement();
         }
 
         private bool CanControl()
         {
-            if (!controlsEnabled)
-            {
-                return false;
-            }
-
+            if (!controlsEnabled) return false;
             return GameManager.Instance == null || GameManager.Instance.IsPlaying;
         }
 
@@ -141,46 +161,30 @@ namespace Platformer3D
 
         private bool CheckGrounded()
         {
-            if (controller.isGrounded)
-            {
-                return true;
-            }
+            if (controller.isGrounded) return true;
 
             Vector3 sphereCenter = GetFeetSphereCenter();
             float radius = controller.radius * groundCheckRadiusScale;
             float checkDistance = groundCheckExtraDistance + controller.skinWidth;
 
-            return Physics.SphereCast(
-                sphereCenter,
-                radius,
-                Vector3.down,
-                out _,
-                checkDistance,
-                groundMask,
-                QueryTriggerInteraction.Ignore);
+            return Physics.SphereCast(sphereCenter, radius, Vector3.down, out _, checkDistance, groundMask, QueryTriggerInteraction.Ignore);
         }
 
         private Vector3 GetFeetSphereCenter()
         {
             float bottomY = transform.position.y + controller.center.y - (controller.height * 0.5f);
-            return new Vector3(
-                transform.position.x + controller.center.x,
-                bottomY + controller.radius,
-                transform.position.z + controller.center.z);
+            return new Vector3(transform.position.x + controller.center.x, bottomY + controller.radius, transform.position.z + controller.center.z);
         }
 
         private void AlignVisualMeshToController()
         {
             MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
             MeshFilter meshFilter = GetComponent<MeshFilter>();
-            if (meshRenderer == null || meshFilter == null)
-            {
-                return;
-            }
+            if (meshRenderer == null || meshFilter == null) return;
 
             GameObject visual = new GameObject("PlayerVisual");
             visual.transform.SetParent(transform, false);
-            visual.transform.localPosition = controller.center;
+            visual.transform.localPosition = controller.center + new Vector3(0, visualYOffset, 0);  // visualYOffset 적용
             visual.transform.localRotation = Quaternion.identity;
             visual.transform.localScale = Vector3.one;
 
@@ -194,6 +198,7 @@ namespace Platformer3D
             Destroy(meshRenderer);
         }
 
+        // ReadMoveInput, ReadJumpPressed, GetCameraRelativeDirection, CheckFallDeath, OnControllerColliderHit 등은 그대로 유지
         private Vector2 ReadMoveInput()
         {
             Vector2 input = Vector2.zero;
@@ -201,25 +206,10 @@ namespace Platformer3D
 
             if (keyboard != null)
             {
-                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)
-                {
-                    input.y += 1f;
-                }
-
-                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)
-                {
-                    input.y -= 1f;
-                }
-
-                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)
-                {
-                    input.x -= 1f;
-                }
-
-                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed)
-                {
-                    input.x += 1f;
-                }
+                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) input.y += 1f;
+                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) input.y -= 1f;
+                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) input.x -= 1f;
+                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) input.x += 1f;
             }
             else
             {
@@ -234,24 +224,16 @@ namespace Platformer3D
         {
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
-            {
                 return keyboard.spaceKey.wasPressedThisFrame;
-            }
-
             return Input.GetButtonDown("Jump");
         }
 
         private Vector3 GetCameraRelativeDirection(Vector2 input)
         {
-            if (input.sqrMagnitude <= 0f)
-            {
-                return Vector3.zero;
-            }
+            if (input.sqrMagnitude <= 0f) return Vector3.zero;
 
             if (cameraTransform == null)
-            {
                 return new Vector3(input.x, 0f, input.y).normalized;
-            }
 
             Vector3 forward = cameraTransform.forward;
             Vector3 right = cameraTransform.right;
@@ -265,51 +247,29 @@ namespace Platformer3D
 
         private void CheckFallDeath()
         {
-            if (GameManager.Instance == null)
-            {
-                return;
-            }
-
+            if (GameManager.Instance == null) return;
             if (transform.position.y < fallDeathY)
-            {
                 GameManager.Instance.TriggerGameOver(GameOverReason.Fall);
-            }
         }
 
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            if (hit.normal.y < 0.6f)
-            {
-                return;
-            }
-
+            if (hit.normal.y < 0.6f) return;
             if (hit.collider.TryGetComponent(out MovingPlatform _))
-            {
                 AttachToMovingPlatform(hit.collider.transform);
-            }
         }
 
         private void AttachToMovingPlatform(Transform platformTransform)
         {
-            if (transform.parent == platformTransform)
-            {
-                return;
-            }
-
+            if (transform.parent == platformTransform) return;
             transform.SetParent(platformTransform, true);
         }
 
         private void DetachFromMovingPlatform()
         {
-            if (transform.parent == null)
-            {
-                return;
-            }
-
+            if (transform.parent == null) return;
             if (transform.parent.GetComponent<MovingPlatform>() != null)
-            {
                 transform.SetParent(null, true);
-            }
         }
 
         private void HandleGameStateChanged(GameState state)
@@ -332,14 +292,8 @@ namespace Platformer3D
         private void OnDrawGizmosSelected()
         {
             if (controller == null)
-            {
                 controller = GetComponent<CharacterController>();
-            }
-
-            if (controller == null)
-            {
-                return;
-            }
+            if (controller == null) return;
 
             Gizmos.color = Color.green;
             Vector3 center = GetFeetSphereCenter();
