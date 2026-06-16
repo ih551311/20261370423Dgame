@@ -5,7 +5,7 @@ namespace Platformer3D
     [RequireComponent(typeof(Collider))]
     public class CollectibleItem : MonoBehaviour
     {
-        [SerializeField] private int scoreValue = 10;
+        [SerializeField] private int scoreValue = 1;
         [SerializeField] private float rotateSpeed = 90f;
         [SerializeField] private float bobHeight = 0.25f;
         [SerializeField] private float bobSpeed = 2f;

@@ -19,11 +19,11 @@ namespace Platformer3D
         [SerializeField] private Button restartButton;
 
         [Header("Messages")]
-        [SerializeField] private string victoryTitle = "Clear!";
+        [SerializeField] private string victoryTitle = "GOOOOOOOOOOOOOOOOD";
         [SerializeField] private string victoryMessage = "Goal reached!";
         [SerializeField] private string timeOutTitle = "Game Over";
         [SerializeField] private string timeOutMessage = "Time is up.";
-        [SerializeField] private string fallTitle = "Game Over";
+        [SerializeField] private string fallTitle = "YOU DIE";
         [SerializeField] private string fallMessage = "You fell off the map.";
 
         private void OnEnable()
